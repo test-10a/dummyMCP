@@ -21,3 +21,10 @@ async def ask(prompt: str):
     )
     return {"claude_response": r.content[0].text}
 
+from fastapi.responses import JSONResponse
+from .mcp_manifest import MANIFEST
+
+@app.get("/.well-known/mcp.json", include_in_schema=False)
+async def manifest():
+    return JSONResponse(MANIFEST)
+
