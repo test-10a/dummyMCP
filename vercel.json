@@ -1,9 +1,12 @@
 {
   "functions": {
-    "api/index.py": { "runtime": "python3.11" }
+    "api/index.py": {
+      // no "runtime" key at all
+      "maxDuration": 30,
+      "memory": 512
+    }
   },
   "routes": [
     { "src": "/(.*)", "dest": "api/index.py" }
   ]
 }
-
