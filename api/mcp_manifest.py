@@ -1,4 +1,3 @@
-# api/mcp_manifest.py
 MANIFEST = {
     "schema_version": "v1",
     "name_for_human": "Dummy MCP",
@@ -12,9 +11,9 @@ MANIFEST = {
     "auth": {"type": "none"},
     "contact_email": "your@email.com",
     "legal_info_url": "https://github.com/<you>/mcp-demo/blob/main/LICENSE",
-    "api": {                 # Claude will fetch your FastAPI spec here
+    "api": {
         "type": "openapi",
-        "url": "https://dummy-mcp-sigma.vercel.app/openapi.json"
+        "url": "/openapi.json"          # 🔧 RELATIVE path
     }
 }
 

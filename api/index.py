@@ -4,8 +4,13 @@ from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI(
     title="Dummy MCP",
     version="0.1.0",
-    servers=[{"url": "https://dummy-mcp-sigma.vercel.app", "description": "Production"}],
+    openapi_version="3.0.1",               # 🔧 3.0.x, not 3.1
+    servers=[{
+        "url": "https://dummy-mcp-sigma.vercel.app",
+        "description": "Production"
+    }],
 )
+
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],)
 CLAUDE_KEY = os.getenv("ANTHROPIC_API_KEY")
 client = anthropic.Client(api_key=CLAUDE_KEY) if CLAUDE_KEY else None
