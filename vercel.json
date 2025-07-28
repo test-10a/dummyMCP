@@ -1,7 +1,6 @@
 {
   "functions": {
     "api/index.py": {
-      // no "runtime" key at all
       "maxDuration": 30,
       "memory": 512
     }
@@ -10,3 +9,4 @@
     { "src": "/(.*)", "dest": "api/index.py" }
   ]
 }
+
