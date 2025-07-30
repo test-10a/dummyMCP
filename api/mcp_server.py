@@ -315,12 +315,42 @@ async def mcp_delete(
 @app.get("/.well-known/oauth-authorization-server")
 async def oauth_authorization_server():
     """OAuth Authorization Server Metadata - indicates no auth required"""
-    return Response(status_code=404)
+    return JSONResponse({
+        "issuer": "https://dummy-mcp-sigma.vercel.app",
+        "registration_endpoint": "https://dummy-mcp-sigma.vercel.app/register",
+        "token_endpoint": "https://dummy-mcp-sigma.vercel.app/token",
+        "authorization_endpoint": "https://dummy-mcp-sigma.vercel.app/authorize",
+        "grant_types_supported": ["client_credentials"],
+        "response_types_supported": ["token"],
+        "token_endpoint_auth_methods_supported": ["none"]
+    })
 
 @app.post("/register")
-async def dynamic_client_registration():
-    """Dynamic client registration - not supported for no-auth server"""
-    return Response(status_code=404)
+async def dynamic_client_registration(request: Request):
+    """Dynamic client registration - returns dummy client for no-auth server"""
+    # For no-auth server, just return a dummy client registration
+    body = await request.json()
+    client_id = str(uuid.uuid4())
+    
+    return JSONResponse({
+        "client_id": client_id,
+        "client_secret": None,  # No secret needed for public clients
+        "client_id_issued_at": int(datetime.utcnow().timestamp()),
+        "grant_types": ["client_credentials"],
+        "response_types": ["token"],
+        "token_endpoint_auth_method": "none",
+        "redirect_uris": body.get("redirect_uris", [])
+    })
+
+@app.post("/token")
+async def token_endpoint(request: Request):
+    """Token endpoint - returns dummy token for no-auth server"""
+    # For no-auth server, just return a dummy token
+    return JSONResponse({
+        "access_token": "dummy-token-no-auth-required",
+        "token_type": "Bearer",
+        "expires_in": 3600
+    })
 
 @app.get("/openapi.json")
 async def openapi_spec():
