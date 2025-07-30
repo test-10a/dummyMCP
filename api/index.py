@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI(
     title="Dummy MCP",
     version="0.1.0",
-    openapi_version="3.0.1",               # 🔧 3.0.x, not 3.1
+    openapi_version="3.1.0",
     servers=[{
         "url": "https://dummy-mcp-sigma.vercel.app",
         "description": "Production"

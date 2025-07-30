@@ -13,7 +13,7 @@ MANIFEST = {
     "legal_info_url": "https://github.com/<you>/mcp-demo/blob/main/LICENSE",
     "api": {
         "type": "openapi",
-        "url": "/openapi.json"          # 🔧 RELATIVE path
+        "url": "https://dummy-mcp-sigma.vercel.app/openapi.json"
     }
 }
 
