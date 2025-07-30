@@ -30,7 +30,7 @@ sessions = {}
 
 class JsonRpcRequest(BaseModel):
     jsonrpc: str = "2.0"
-    id: Union[str, int, None]
+    id: Optional[Union[str, int, None]] = None
     method: str
     params: Optional[Dict[str, Any]] = {}
 
@@ -175,6 +175,9 @@ async def handle_request(request: JsonRpcRequest, session_id: Optional[str] = No
         
         if method == "initialize":
             result = await handle_initialize(params)
+        elif method == "notifications/initialized":
+            # This is a notification - no response required
+            return None
         elif method == "tools/list":
             result = await handle_tools_list()
         elif method == "tools/call":
@@ -220,6 +223,10 @@ async def mcp_post(
             
             response = await handle_request(rpc_request, mcp_session_id)
             
+            # Handle notifications (no response expected)
+            if response is None:
+                return JSONResponse(content={}, status_code=204)
+            
             # Extract session ID from initialize response
             response_dict = response.dict(exclude_none=True)
             if rpc_request.method == "initialize" and response.result:
@@ -238,7 +245,9 @@ async def mcp_post(
             for req_data in body:
                 rpc_request = JsonRpcRequest(**req_data)
                 response = await handle_request(rpc_request, mcp_session_id)
-                responses.append(response.dict(exclude_none=True))
+                # Only add non-null responses (skip notifications)
+                if response is not None:
+                    responses.append(response.dict(exclude_none=True))
             return JSONResponse(content=responses)
         
         else:
