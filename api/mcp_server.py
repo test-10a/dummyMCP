@@ -312,6 +312,22 @@ async def mcp_delete(
             content={"error": "Session not found"}
         )
 
+@app.get("/.well-known/oauth-authorization-server")
+async def oauth_authorization_server():
+    """OAuth Authorization Server Metadata - indicates no auth required"""
+    return JSONResponse(
+        status_code=404,
+        content={"error": "No authorization server - this MCP server uses no authentication"}
+    )
+
+@app.post("/register")
+async def dynamic_client_registration():
+    """Dynamic client registration - not supported for no-auth server"""
+    return JSONResponse(
+        status_code=404,
+        content={"error": "Dynamic client registration not supported - this MCP server uses no authentication"}
+    )
+
 @app.get("/openapi.json")
 async def openapi_spec():
     """OpenAPI specification for MCP tools"""
