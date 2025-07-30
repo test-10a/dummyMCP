@@ -303,6 +303,61 @@ async def mcp_delete(
             content={"error": "Session not found"}
         )
 
+@app.get("/openapi.json")
+async def openapi_spec():
+    """OpenAPI specification for MCP tools"""
+    return {
+        "openapi": "3.0.0",
+        "info": {
+            "title": "Dummy MCP Server",
+            "version": "0.1.0",
+            "description": "MCP server with hello and ask_claude tools"
+        },
+        "servers": [
+            {"url": "https://dummy-mcp-sigma.vercel.app"}
+        ],
+        "paths": {
+            "/mcp": {
+                "post": {
+                    "summary": "MCP JSON-RPC endpoint",
+                    "requestBody": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "jsonrpc": {"type": "string", "enum": ["2.0"]},
+                                        "id": {"oneOf": [{"type": "string"}, {"type": "integer"}, {"type": "null"}]},
+                                        "method": {"type": "string"},
+                                        "params": {"type": "object"}
+                                    },
+                                    "required": ["jsonrpc", "method"]
+                                }
+                            }
+                        }
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Successful response",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "jsonrpc": {"type": "string", "enum": ["2.0"]},
+                                            "id": {"oneOf": [{"type": "string"}, {"type": "integer"}, {"type": "null"}]},
+                                            "result": {"type": "object"}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
 # Legacy endpoints for compatibility
 @app.get("/.well-known/mcp.json", include_in_schema=False)
 async def manifest():
