@@ -1,0 +1,316 @@
+from fastapi import FastAPI, HTTPException, Header, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse, JSONResponse
+from pydantic import BaseModel
+from typing import Dict, Any, Optional, List, Union
+import anthropic
+import os
+import json
+import uuid
+import asyncio
+from datetime import datetime
+
+app = FastAPI(
+    title="Dummy MCP Server",
+    version="0.1.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+CLAUDE_KEY = os.getenv("ANTHROPIC_API_KEY")
+client = anthropic.Client(api_key=CLAUDE_KEY) if CLAUDE_KEY else None
+
+# Store active sessions
+sessions = {}
+
+class JsonRpcRequest(BaseModel):
+    jsonrpc: str = "2.0"
+    id: Union[str, int, None]
+    method: str
+    params: Optional[Dict[str, Any]] = {}
+
+class JsonRpcResponse(BaseModel):
+    jsonrpc: str = "2.0"
+    id: Union[str, int, None]
+    result: Optional[Any] = None
+    error: Optional[Dict[str, Any]] = None
+
+def create_response(id: Union[str, int, None], result: Any = None, error: Any = None) -> JsonRpcResponse:
+    return JsonRpcResponse(id=id, result=result, error=error)
+
+def create_error(code: int, message: str, data: Any = None) -> Dict[str, Any]:
+    error = {"code": code, "message": message}
+    if data is not None:
+        error["data"] = data
+    return error
+
+# MCP Tools
+TOOLS = [
+    {
+        "name": "hello_claude",
+        "description": "Returns a greeting from the MCP server",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    },
+    {
+        "name": "ask_claude",
+        "description": "Ask Claude a question and get a response",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "The prompt to send to Claude"
+                }
+            },
+            "required": ["prompt"]
+        }
+    }
+]
+
+async def handle_initialize(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Handle initialize request"""
+    session_id = str(uuid.uuid4())
+    sessions[session_id] = {
+        "created_at": datetime.utcnow().isoformat(),
+        "client_info": params.get("clientInfo", {})
+    }
+    
+    return {
+        "protocolVersion": "2025-03-26",
+        "serverInfo": {
+            "name": "dummy-mcp",
+            "version": "0.1.0"
+        },
+        "capabilities": {
+            "tools": {}
+        },
+        "sessionId": session_id
+    }
+
+async def handle_tools_list() -> Dict[str, Any]:
+    """Handle tools/list request"""
+    return {"tools": TOOLS}
+
+async def handle_tools_call(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Handle tools/call request"""
+    tool_name = params.get("name")
+    arguments = params.get("arguments", {})
+    
+    if tool_name == "hello_claude":
+        return {
+            "content": [
+                {
+                    "type": "text",
+                    "text": "🚀 Hello from Dummy MCP! I'm alive and well!"
+                }
+            ]
+        }
+    
+    elif tool_name == "ask_claude":
+        if not client:
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Claude API key not configured"
+                    }
+                ],
+                "isError": True
+            }
+        
+        prompt = arguments.get("prompt")
+        if not prompt:
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Missing 'prompt' argument"
+                    }
+                ],
+                "isError": True
+            }
+        
+        try:
+            response = client.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=64,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": response.content[0].text
+                    }
+                ]
+            }
+        except Exception as e:
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": f"Error calling Claude: {str(e)}"
+                    }
+                ],
+                "isError": True
+            }
+    
+    else:
+        raise ValueError(f"Unknown tool: {tool_name}")
+
+async def handle_request(request: JsonRpcRequest, session_id: Optional[str] = None) -> JsonRpcResponse:
+    """Handle a JSON-RPC request"""
+    try:
+        method = request.method
+        params = request.params or {}
+        
+        if method == "initialize":
+            result = await handle_initialize(params)
+        elif method == "tools/list":
+            result = await handle_tools_list()
+        elif method == "tools/call":
+            result = await handle_tools_call(params)
+        else:
+            return create_response(
+                request.id, 
+                error=create_error(-32601, f"Method not found: {method}")
+            )
+        
+        return create_response(request.id, result=result)
+    
+    except Exception as e:
+        return create_response(
+            request.id,
+            error=create_error(-32603, "Internal error", str(e))
+        )
+
+@app.get("/")
+async def root():
+    return {"msg": "🚀 Dummy MCP Server - Use /mcp endpoint for MCP protocol"}
+
+@app.post("/mcp")
+async def mcp_post(
+    request: Request,
+    mcp_session_id: Optional[str] = Header(None, alias="Mcp-Session-Id")
+):
+    """Handle POST requests to the MCP endpoint"""
+    try:
+        body = await request.json()
+        
+        # Handle single request
+        if isinstance(body, dict):
+            rpc_request = JsonRpcRequest(**body)
+            
+            # Check session requirement
+            if rpc_request.method != "initialize" and mcp_session_id:
+                if mcp_session_id not in sessions:
+                    return JSONResponse(
+                        status_code=404,
+                        content={"error": "Session not found"}
+                    )
+            
+            response = await handle_request(rpc_request, mcp_session_id)
+            
+            # Extract session ID from initialize response
+            response_dict = response.dict(exclude_none=True)
+            if rpc_request.method == "initialize" and response.result:
+                session_id = response.result.get("sessionId")
+                if session_id:
+                    return JSONResponse(
+                        content=response_dict,
+                        headers={"Mcp-Session-Id": session_id}
+                    )
+            
+            return JSONResponse(content=response_dict)
+        
+        # Handle batch requests
+        elif isinstance(body, list):
+            responses = []
+            for req_data in body:
+                rpc_request = JsonRpcRequest(**req_data)
+                response = await handle_request(rpc_request, mcp_session_id)
+                responses.append(response.dict(exclude_none=True))
+            return JSONResponse(content=responses)
+        
+        else:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Invalid request format"}
+            )
+    
+    except Exception as e:
+        return JSONResponse(
+            status_code=400,
+            content={"error": f"Bad request: {str(e)}"}
+        )
+
+@app.get("/mcp")
+async def mcp_get(
+    mcp_session_id: Optional[str] = Header(None, alias="Mcp-Session-Id"),
+    last_event_id: Optional[str] = Header(None, alias="Last-Event-ID")
+):
+    """Handle GET requests for SSE streaming"""
+    if mcp_session_id and mcp_session_id not in sessions:
+        return JSONResponse(
+            status_code=404,
+            content={"error": "Session not found"}
+        )
+    
+    async def event_generator():
+        # Send a keepalive event
+        yield f"event: keepalive\ndata: {{}}\n\n"
+        
+        # Keep connection alive
+        while True:
+            await asyncio.sleep(30)
+            yield f"event: keepalive\ndata: {{}}\n\n"
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
+    )
+
+@app.delete("/mcp")
+async def mcp_delete(
+    mcp_session_id: Optional[str] = Header(None, alias="Mcp-Session-Id")
+):
+    """Handle DELETE requests to terminate a session"""
+    if not mcp_session_id:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Missing Mcp-Session-Id header"}
+        )
+    
+    if mcp_session_id in sessions:
+        del sessions[mcp_session_id]
+        return JSONResponse(content={"message": "Session terminated"})
+    else:
+        return JSONResponse(
+            status_code=404,
+            content={"error": "Session not found"}
+        )
+
+# Legacy endpoints for compatibility
+@app.get("/.well-known/mcp.json", include_in_schema=False)
+async def manifest():
+    """Legacy manifest endpoint"""
+    return JSONResponse({
+        "name": "dummy-mcp",
+        "description": "MCP server with hello and ask_claude tools",
+        "mcp_version": "2025-03-26",
+        "transport": "http",
+        "endpoint": "https://dummy-mcp-sigma.vercel.app/mcp"
+    })
