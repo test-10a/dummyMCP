@@ -334,7 +334,7 @@ async def dynamic_client_registration(request: Request):
     
     return JSONResponse({
         "client_id": client_id,
-        "client_secret": None,  # No secret needed for public clients
+        "client_secret": "",  # Empty string for public clients
         "client_id_issued_at": int(datetime.utcnow().timestamp()),
         "grant_types": ["client_credentials"],
         "response_types": ["token"],
