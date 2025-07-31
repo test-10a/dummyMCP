@@ -9,6 +9,10 @@ import json
 import uuid
 import asyncio
 from datetime import datetime
+import base64
+import gzip
+import zipfile
+import io
 
 app = FastAPI(
     title="Dummy MCP Server",
@@ -72,6 +76,30 @@ TOOLS = [
                 }
             },
             "required": ["prompt"]
+        }
+    },
+    {
+        "name": "compress_file",
+        "description": "Compress file content using gzip or zip format",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string",
+                    "description": "The base64-encoded content to compress"
+                },
+                "filename": {
+                    "type": "string",
+                    "description": "The filename for the compressed content"
+                },
+                "format": {
+                    "type": "string",
+                    "enum": ["gzip", "zip"],
+                    "description": "The compression format to use",
+                    "default": "gzip"
+                }
+            },
+            "required": ["content", "filename"]
         }
     }
 ]
@@ -159,6 +187,92 @@ async def handle_tools_call(params: Dict[str, Any]) -> Dict[str, Any]:
                     {
                         "type": "text",
                         "text": f"Error calling Claude: {str(e)}"
+                    }
+                ],
+                "isError": True
+            }
+    
+    elif tool_name == "compress_file":
+        content = arguments.get("content")
+        filename = arguments.get("filename")
+        compress_format = arguments.get("format", "gzip")
+        
+        if not content:
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Missing 'content' argument"
+                    }
+                ],
+                "isError": True
+            }
+        
+        if not filename:
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Missing 'filename' argument"
+                    }
+                ],
+                "isError": True
+            }
+        
+        try:
+            # Decode base64 content
+            decoded_content = base64.b64decode(content)
+            
+            if compress_format == "gzip":
+                # Compress using gzip
+                compressed_buffer = io.BytesIO()
+                with gzip.GzipFile(filename=filename, mode='wb', fileobj=compressed_buffer) as gz:
+                    gz.write(decoded_content)
+                compressed_data = compressed_buffer.getvalue()
+                output_filename = f"{filename}.gz"
+            
+            elif compress_format == "zip":
+                # Compress using zip
+                compressed_buffer = io.BytesIO()
+                with zipfile.ZipFile(compressed_buffer, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+                    zf.writestr(filename, decoded_content)
+                compressed_data = compressed_buffer.getvalue()
+                output_filename = f"{filename}.zip"
+            
+            else:
+                return {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"Unsupported format: {compress_format}"
+                        }
+                    ],
+                    "isError": True
+                }
+            
+            # Encode compressed data to base64
+            compressed_base64 = base64.b64encode(compressed_data).decode('utf-8')
+            
+            # Calculate compression ratio
+            original_size = len(decoded_content)
+            compressed_size = len(compressed_data)
+            ratio = (1 - compressed_size / original_size) * 100 if original_size > 0 else 0
+            
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": f"File compressed successfully!\n\nFormat: {compress_format}\nOriginal size: {original_size} bytes\nCompressed size: {compressed_size} bytes\nCompression ratio: {ratio:.1f}%\nOutput filename: {output_filename}\n\nCompressed content (base64):\n{compressed_base64}"
+                    }
+                ]
+            }
+            
+        except Exception as e:
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": f"Error compressing file: {str(e)}"
                     }
                 ],
                 "isError": True
